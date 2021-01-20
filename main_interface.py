@@ -161,7 +161,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
     @staticmethod
     def _ndarray_to_pixmap(image):
         h, w, d = image.shape
-        q_image = QImage(image.data, w, h, w*d, QImage.Format_BGR888)
+        q_image = QImage(image.data, w, h, w*d, QImage.Format_RGB888)
         return QPixmap.fromImage(q_image)
 
     def _set_video_save_dict(self):

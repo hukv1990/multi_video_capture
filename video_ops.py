@@ -1,6 +1,7 @@
 # coding=utf-8
 import cv2
 
+
 class VideoReader(object):
     def __init__(self, name, pwd, ip, codec, ch, subtype, sn,**kwargs):
         super(VideoReader, self).__init__()
