@@ -5,3 +5,7 @@
 目前支持的摄像头
 
 - 海康威视
+
+
+
+![](README.assets/ir.png)
