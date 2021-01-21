@@ -44,7 +44,7 @@ class QThreadDisplay(QThread):
                 break
             if len(self.shm_list) > 0:
                 image = self.shm_list[0]
-                image = np.ascontiguousarray(image[:, ::-1])
+                image = np.ascontiguousarray(image[:, ::-1, ::-1])
                 if image is None:
                     self.info_queue.put(f'[{self.tid}] image is None')
                     continue

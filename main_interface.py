@@ -287,7 +287,7 @@ def video_cap_thread(pid, cap_cfg, manager_dict, mode):
                 return
             ret, image = vr.read()
             if (not ret) or (image is None):
-                break
+                raise ValueError(f'camera read error.')
             shm_list.append(image)
         vr.close()
 
@@ -339,3 +339,4 @@ def video_cap_thread(pid, cap_cfg, manager_dict, mode):
             info_queue.put(f'[{pid}] stop.')
         except Exception as e:
             info_queue.put(f'[{pid}][Error] {e}')
+            time.sleep(1)
