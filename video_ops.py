@@ -1,30 +1,27 @@
 # coding=utf-8
+
+from abc import abstractmethod
 import cv2
 
 
-class VideoReader(object):
-    def __init__(self, name, pwd, ip, codec, ch, subtype, sn,**kwargs):
-        super(VideoReader, self).__init__()
-        self.name = name
-        self.pwd = pwd
-        self.ip = ip
-        self.codec = codec
-        self.ch = ch
-        self.subtype = subtype
+class VideoReaderBase(object):
+    def __init__(self, sn, **kwargs):
+        self.cap = None
         self.sn = sn
 
-        self.cap = None
+    @property
+    def info(self):
+        return 'video reader'
+
+    @abstractmethod
+    def open(self):
+        pass
 
     def is_opened(self):
         if self.cap is None:
             return False
         else:
             return self.cap.isOpened()
-
-    def open(self):
-        self.cap = cv2.VideoCapture(self.rtsp)
-        if not self.cap.isOpened():
-            raise ValueError(f"No Camera Found: {self.rtsp}")
 
     @property
     def width(self):
@@ -42,15 +39,9 @@ class VideoReader(object):
         if self.is_opened():
             self.cap.release()
 
+    @abstractmethod
     def read(self):
         return self.cap.read()
-
-    @property
-    def rtsp(self):
-        # return f"rtsp://{self.name}:{self.pwd}@{self.ip}//Streaming/Channels/{self.id}"
-        # rtsp://admin:admin12345@192.168.1.155:554/h264/ch1/main/av_stream
-        # rtsp://admin:admin12345@192.168.1.155:554/h264/ch1/sub/av_stream
-        return f"rtsp://{self.name}:{self.pwd}@{self.ip}/{self.codec}/ch{self.ch}/{self.subtype}/av_stream"
 
     def __enter__(self):
         self.open()
@@ -58,6 +49,100 @@ class VideoReader(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+class CameraReaderUSB(VideoReaderBase):
+    def __init__(self, instance_idx=0, show_factor=0.2, **kwargs):
+        super(CameraReaderUSB, self).__init__(**kwargs)
+        self.instance_idx = instance_idx
+
+        self.cap = None
+
+    def open(self):
+        self.cap = cv2.VideoCapture(self.instance_idx)
+        # self.cap.set(6, cv2.VideoWriter.fourcc('M', 'J', 'P', 'G'))
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        if not self.cap.isOpened():
+            raise ValueError(f"No Camera Found: {self.instance_idx}")
+
+    @property
+    def info(self):
+        return f"usb: {self.instance_idx}"
+
+
+class CameraReaderRtsp(VideoReaderBase):
+    def __init__(self, name, pwd, ip, port, codec, ch, subtype, **kwargs):
+        super(CameraReaderRtsp, self).__init__(**kwargs)
+        self.name = name
+        self.pwd = pwd
+        self.ip = ip
+        self.port = port
+        self.codec = codec
+        self.ch = ch
+        self.subtype = subtype
+
+        self.cap = None
+
+    def open(self):
+        self.cap = cv2.VideoCapture(self.info)
+        if not self.cap.isOpened():
+            raise ValueError(f"No Camera Found: {self.info}")
+
+    @property
+    def info(self):
+        return f"rtsp://{self.name}:{self.pwd}@{self.ip}:{self.port}/{self.codec}/ch{self.ch}/{self.subtype}/av_stream"
+
+
+class DeviceReaderBase(object):
+    def __init__(self, show_ratio=0.2, **kwargs):
+        self.show_ratio = show_ratio
+
+
+class DeviceReaderUSB(DeviceReaderBase):
+    def __init__(self, dev_cfg, **kwargs):
+        super(DeviceReaderUSB, self).__init__(**kwargs)
+        self.camera = CameraReaderUSB(**dev_cfg)
+
+    def open(self):
+        return self.camera.open()
+
+    def close(self):
+        return self.camera.close()
+
+    def read_image(self):
+        ret, image = self.camera.read()
+        if not ret:
+            return None, None
+        image_show = cv2.resize(image, None, fx=self.show_ratio, fy=self.show_ratio)
+        return image, image_show
+
+
+class DeviceReaderRTSP(DeviceReaderBase):
+    def __init__(self, dev_cfg, **kwargs):
+        super(DeviceReaderRTSP, self).__init__(**kwargs)
+        self.main_camera = CameraReaderRtsp(**dev_cfg['main'])
+        self.sub_camera = CameraReaderRtsp(**dev_cfg['sub'])
+
+    def open(self):
+        self.main_camera.open()
+        self.sub_camera.open()
+
+    def close(self):
+        self.main_camera.close()
+        self.sub_camera.close()
+
+    def read_image(self):
+        image = self.main_camera.read()
+        image_show = self.sub_camera.read()
+        return image, image_show
+
+
+class DeviceReadFactory(object):
+    @staticmethod
+    def create_instance(type, **kwargs) -> DeviceReaderUSB:
+        assert type in ['USB', 'RTSP']
+        return eval(f'DeviceReader{type}')(kwargs)
 
 
 class VideoWriter(object):
@@ -68,12 +153,17 @@ class VideoWriter(object):
         self.height = height
         self.vw = None
 
+    def is_opened(self):
+        return self.vw is not None
+
     def open(self):
         fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
         self.vw = cv2.VideoWriter(self.filepath, fourcc, self.fps, (self.width, self.height))
 
     def close(self):
-        self.vw.release()
+        if self.is_opened():
+            self.vw.release()
+            self.vw = None
 
     def write(self, image):
         self.vw.write(image)

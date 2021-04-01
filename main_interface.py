@@ -17,7 +17,7 @@ import logging
 
 from qinterface import QPlainTextEditLogger, QThreadDisplay
 from ui_main_interface import Ui_MainWindow
-from video_ops import VideoReader, VideoWriter
+from video_ops import VideoWriter, DeviceReadFactory
 import utils
 
 
@@ -29,7 +29,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
 
         self._camera_cnt = len(self.camera_cfg)
         self._label_img_views = self._camera_cnt
-        self._cur_save_dict = None # {datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}
+        self._cur_save_dict = None  # {datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}
 
         # init_logging()
         self._init_camera_instance()
@@ -45,7 +45,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
     def _init_camera_instance(self):
         manager = Manager()
         self.info_queue = manager.Queue()
-        self.event_cap = manager.Event()
+        self.event_cap_save = manager.Event()
         self.event_cap_show = manager.Event()
         self.event_cap_close = manager.Event()
         self.shm_show_lists = [manager.list() for i in range(self._camera_cnt)]
@@ -54,40 +54,25 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         self.cap_cfgs = self.camera_cfg.values()
 
         self.event_cap_close.clear()
-        self.event_cap.clear()
+        self.event_cap_save.clear()
         self.event_cap_show.clear()
 
-        pool = Pool(self._camera_cnt * 2)
-        for idx, cap_cfg in enumerate(self.cap_cfgs):
-            manager_dict = {
-                "info_queue": self.info_queue,
-                'cap_close_event': self.event_cap_close,
-                'save_path': self.video_cfg.save_path,
-                'cap_event': self.event_cap,
-                'save_dict': self._cur_save_dict,
-            }
-            pool.apply_async(video_cap_thread, args=(idx, cap_cfg.main, manager_dict, 'cap'))
-
+        pool = Pool(self._camera_cnt)
         for idx, (shm_list, cap_cfg) in enumerate(zip(self.shm_show_lists, self.cap_cfgs)):
             manager_dict = {
                 "info_queue": self.info_queue,
-                'cap_close_event': self.event_cap_close,
+                'save_root': self.video_cfg.save_root,
+                'event_cap_save': self.event_cap_save,
+                'event_cap_show': self.event_cap_show,
+                'event_cap_close': self.event_cap_close,
                 'shm_list': shm_list,
-                'cap_event': self.event_cap_show,
+                'save_dict': self._cur_save_dict,
             }
-            pool.apply_async(video_cap_thread, args=(idx + 100, cap_cfg.sub, manager_dict, 'cap_show'))
+            pool.apply_async(video_cap_thread, args=(idx, cap_cfg, manager_dict))
+            # pool.apply(video_cap_thread, args=(idx, cap_cfg, manager_dict))
+
         pool.close()
         self.pool = pool
-
-        # th_list = []
-        # for i in range(self._camera_cnt):
-        #     th = threading.Thread(target=self.display, args=(i, self.shm_show_lists[i], ))
-        #     th_list.append(th)
-        # for th in th_list:
-        #     time.sleep(0.01)
-        #     th.start()
-        # self.th_list = th_list
-
 
     def _set_label_image(self):
         _palette = QPalette()
@@ -161,7 +146,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
     @staticmethod
     def _ndarray_to_pixmap(image):
         h, w, d = image.shape
-        q_image = QImage(image.data, w, h, w*d, QImage.Format_RGB888)
+        q_image = QImage(image.data, w, h, w * d, QImage.Format_RGB888)
         return QPixmap.fromImage(q_image)
 
     def _set_video_save_dict(self):
@@ -173,14 +158,14 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
     def start_button_pressed_slot(self):
         if self.pbn_start.text() == u'开始':
             self._set_video_save_dict()
-            self.event_cap.set()
+            self.event_cap_save.set()
             self.pbn_start.setText(u'结束')
             self.pbn_del.setEnabled(False)
             self.lineEdit_id.setEnabled(False)
             self.lineEdit_loc.setEnabled(False)
             self.lineEdit_mode.setEnabled(False)
         else:
-            self.event_cap.clear()
+            self.event_cap_save.clear()
             self.pbn_start.setText(u'开始')
             self.pbn_del.setEnabled(True)
             self.lineEdit_id.setEnabled(True)
@@ -189,9 +174,9 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
 
     def _delete_by_prefix(self):
         prefix = self._cur_save_dict['prefix']
-        video_list = Path(self.video_cfg.save_path).glob(rf"{prefix}*")
+        video_list = Path(self.video_cfg.save_root).glob(rf"{prefix}*")
         for video_path in video_list:
-            video_path:Path
+            video_path: Path
             video_path.unlink()
             self.info_queue.put(f"delete {video_path}")
         self._cur_save_dict['prefix'] = ''
@@ -207,24 +192,6 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         if result == QtWidgets.QMessageBox.Yes:
             self._delete_by_prefix()
 
-    # def display(self, idx, image_list):
-    #     while True:
-    #         time.sleep(0.02)  # 25fps = 0.04s, 根据采样定理设置
-    #         if self.event_cap_close.is_set():
-    #             self.info_queue.put(f'sub thread {[idx]} exit.')
-    #             break
-    #         if len(image_list) > 0:
-    #             image = image_list[0]
-    #             image = np.ascontiguousarray(image[:, ::-1])
-    #             if image is None:
-    #                 self.info_queue.put(f'[{idx}] image is None')
-    #                 continue
-    #             pixmap = self._ndarray_to_pixmap(image)
-    #             label_img = eval(f"self.label_img{idx}")
-    #             label_img.setPixmap(pixmap)
-    #             del image_list[0]
-                # self.info_queue.put(f"[{idx}] show image")
-
     def closeEvent(self, event) -> None:
         result = QtWidgets.QMessageBox.question(self, "标题", "确认退出吗？",
                                                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
@@ -232,7 +199,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
             self.event_cap_close.set()
             # for th in self.th_list:
             #     th.join()
-            self.event_cap.set()
+            self.event_cap_save.set()
             self.event_cap_show.set()
             self.pool.join()
             for th in self.th_list:
@@ -266,77 +233,68 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
             logging.info(info)
 
 
-def video_cap_thread(pid, cap_cfg, manager_dict, mode):
+def video_cap_thread(pid, cap_cfg, manager_dict):
     info_queue = manager_dict['info_queue']
+    event_cap_save = manager_dict['event_cap_save']
+    event_cap_show = manager_dict['event_cap_show']
+    event_cap_close = manager_dict['event_cap_close']
+    shm_list: list = manager_dict['shm_list']
+    video_save_root = manager_dict['save_root']
+    save_dict = manager_dict['save_dict']
 
-    if mode not in ['cap_show', 'cap']:
-        info_queue.put(f'mode must be in [cap_show, cap]: mode={mode}')
-        assert ValueError
+    def cap_show_dev():
+        vw = video_path = None
 
-    cap_event = manager_dict['cap_event']
-    cap_close_event = manager_dict['cap_close_event']
-    vr = VideoReader(**cap_cfg)
-
-    def cap_show_video():
-        shm_list: list = manager_dict['shm_list']
-        vr.open()
+        dev = DeviceReadFactory.create_instance(**cap_cfg)
+        dev.open()
         while True:
-            if not cap_event.is_set():
+            if not event_cap_show.is_set():
                 break
-            if cap_close_event.is_set():
+            if event_cap_close.is_set():
                 return
-            ret, image = vr.read()
-            if (not ret) or (image is None):
-                raise ValueError(f'camera read error.')
-            shm_list.append(image)
-        vr.close()
 
-    def cap_video():
-        cap_save_path = manager_dict['save_path']
-        save_dict = manager_dict['save_dict']
-        save_prefix = save_dict['prefix']
-        video_path = f"{cap_save_path}/{save_prefix}_{pid:02d}.mp4"
-        Path(video_path).parent.mkdir(parents=True, exist_ok=True)
+            image, image_show = dev.read_image()
+            if image is None:
+                raise ValueError('camera read error.')
 
-        vr.open()
-        vw = VideoWriter(video_path, vr.width, vr.height, vr.fps)
-        vw.open()
+            shm_list.append(image_show)
+            if event_cap_save.is_set():
+                if (vw is None) or (not vw.is_opened()):
+                    save_prefix = save_dict['prefix']
+                    video_path = f"{video_save_root}/{save_prefix}_{pid:02d}.mp4"
+                    Path(video_path).parent.mkdir(parents=True, exist_ok=True)
+                    vw = VideoWriter(video_path, dev.camera.width, dev.camera.height, dev.camera.fps)
+                    vw.open()
+                else:
+                    vw.write(image)
 
-        while True:
-            if not cap_event.is_set():
-                break
-            if cap_close_event.is_set():
-                return
-            ret, image = vr.read()
-            if not ret:
-                vr.close()
+            elif (vw is not None) and vw.is_opened():
                 vw.close()
-                raise ValueError(f'camera read error.')
-            vw.write(image)
-        vr.close()
-        vw.close()
+                save_info = {
+                    'video_path': video_path,
+                    'id': save_dict['id'],
+                    'mode': save_dict['mode'],
+                    'loc': save_dict['loc'],
+                    'camera_sn': dev.camera.sn
+                }
+                utils.to_yaml(save_info, Path(video_path).with_suffix('.yaml'))
+            else:
+                pass
 
-        save_info = {
-            'video_path': video_path,
-            'id': save_dict['id'],
-            'mode': save_dict['mode'],
-            'loc': save_dict['loc'],
-            'camera_sn': vr.sn
-        }
-
-        utils.to_yaml(save_info, Path(video_path).with_suffix('.yaml'))
-        info_queue.put(f"[{pid}] save video to {video_path}")
+        dev.close()
 
     while True:
-        info_queue.put(f"[{pid}] waiting")
-        cap_event.wait()
+        info_queue.put(f"[{pid}] waitting.")
+        event_cap_show.wait()
         info_queue.put(f"[{pid}] start to cap.")
-        if cap_close_event.is_set():
-            info_queue.put(f'sub process {[pid]} exit.')
+
+        if event_cap_close.is_set():
+            info_queue.put(f"[{pid}] exit.")
             return
+
         try:
-            eval(f"{mode}_video")()
-            info_queue.put(f'[{pid}] stop.')
+            cap_show_dev()
+            info_queue.put(f"[{pid}] stop.")
         except Exception as e:
             info_queue.put(f'[{pid}][Error] {e}')
             time.sleep(1)

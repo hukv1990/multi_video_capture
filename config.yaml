@@ -1,94 +1,14 @@
 camera_cfg:
   camera1:
-    base: &c1_base
-      ip: 192.168.1.155
-      name: admin
-      pwd: admin12345
-      ch: 1
-      codec: h264
-      sn: 'c1'
-
-    main:
-      subtype: main
-      <<: *c1_base
-    sub:
-      subtype: sub
-      <<: *c1_base
+    type: USB
+    instance_idx: 1
+    sn: 'haikangIDS0'
 
   camera2:
-    base: &c2_base
-      ip: 192.168.1.155
-      name: admin
-      pwd: admin12345
-      ch: 1
-      codec: h264
-      sn: 'c2'
-    main:
-      subtype: main
-      <<: *c2_base
-    sub:
-      subtype: sub
-      <<: *c2_base
+    type: USB
+    instance_idx: 2
+    sn: 'haikangIDS1'
 
-  camera3:
-    base: &c3_base
-      ip: 192.168.1.155
-      name: admin
-      pwd: admin12345
-      ch: 1
-      codec: h264
-      sn: 'c3'
-    main:
-      subtype: main
-      <<: *c3_base
-    sub:
-      subtype: sub
-      <<: *c3_base
-
-  camera4:
-    base: &c4_base
-      ip: 192.168.1.155
-      name: admin
-      pwd: admin12345
-      ch: 1
-      codec: h264
-      sn: 'c4'
-    main:
-      subtype: main
-      <<: *c4_base
-    sub:
-      subtype: sub
-      <<: *c4_base
-
-  camera5:
-   base: &c5_base
-     ip: 192.168.1.155
-     name: admin
-     pwd: admin12345
-     ch: 1
-     codec: h264
-     sn: 'c5'
-   main:
-     subtype: main
-     <<: *c5_base
-   sub:
-     subtype: sub
-     <<: *c5_base
-
-  camera6:
-   base: &c6_base
-     ip: 192.168.1.155
-     name: admin
-     pwd: admin12345
-     ch: 1
-     codec: h264
-     sn: 'c6'
-   main:
-     subtype: main
-     <<: *c6_base
-   sub:
-     subtype: sub
-     <<: *c6_base
 
 video_cfg:
-  save_path: 'D:/video_save'
+  save_root: 'D:/video_save'
