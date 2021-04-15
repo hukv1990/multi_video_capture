@@ -60,9 +60,10 @@ class CameraReaderUSB(VideoReaderBase):
 
     def open(self):
         self.cap = cv2.VideoCapture(self.instance_idx)
-        # self.cap.set(6, cv2.VideoWriter.fourcc('M', 'J', 'P', 'G'))
+        # self.cap.set(6, cv2.VideoWriter.fourcc('H', '2', '6', '4'))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        self.cap.set(cv2.CAP_PROP_FPS, 20)
         if not self.cap.isOpened():
             raise ValueError(f"No Camera Found: {self.instance_idx}")
 
@@ -72,15 +73,16 @@ class CameraReaderUSB(VideoReaderBase):
 
 
 class CameraReaderRtsp(VideoReaderBase):
-    def __init__(self, name, pwd, ip, port, codec, ch, subtype, **kwargs):
+    def __init__(self, rtsp_addr, **kwargs):
         super(CameraReaderRtsp, self).__init__(**kwargs)
-        self.name = name
-        self.pwd = pwd
-        self.ip = ip
-        self.port = port
-        self.codec = codec
-        self.ch = ch
-        self.subtype = subtype
+        # self.name = name
+        # self.pwd = pwd
+        # self.ip = ip
+        # self.port = port
+        # self.codec = codec
+        # self.ch = ch
+        # self.subtype = subtype
+        self.rtsp_addr = rtsp_addr
 
         self.cap = None
 
@@ -91,7 +93,9 @@ class CameraReaderRtsp(VideoReaderBase):
 
     @property
     def info(self):
-        return f"rtsp://{self.name}:{self.pwd}@{self.ip}:{self.port}/{self.codec}/ch{self.ch}/{self.subtype}/av_stream"
+        # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1_subgtype=0
+        # return f"rtsp://{self.name}:{self.pwd}@{self.ip}:{self.port}/{self.codec}/ch{self.ch}/{self.subtype}/av_stream"
+        return self.rtsp_addr
 
 
 class DeviceReaderBase(object):
@@ -114,8 +118,11 @@ class DeviceReaderUSB(DeviceReaderBase):
         ret, image = self.camera.read()
         if not ret:
             return None, None
-        image_show = cv2.resize(image, None, fx=self.show_ratio, fy=self.show_ratio)
-        return image, image_show
+        return image, image
+
+    @property
+    def sn(self):
+        return self.camera.sn
 
 
 class DeviceReaderRTSP(DeviceReaderBase):
@@ -133,9 +140,13 @@ class DeviceReaderRTSP(DeviceReaderBase):
         self.sub_camera.close()
 
     def read_image(self):
-        image = self.main_camera.read()
-        image_show = self.sub_camera.read()
+        _, image = self.main_camera.read()
+        _, image_show = self.sub_camera.read()
         return image, image_show
+
+    @property
+    def sn(self):
+        return self.main_camera.sn
 
 
 class DeviceReadFactory(object):
@@ -146,9 +157,10 @@ class DeviceReadFactory(object):
 
 
 class VideoWriter(object):
-    def __init__(self, filepath, width, height, fps=20):
+    def __init__(self, filepath, width, height, fps=20, fourcc='h264'):
         self.filepath = filepath
         self.fps = fps
+        self.fourcc = fourcc
         self.width = width
         self.height = height
         self.vw = None
@@ -157,7 +169,7 @@ class VideoWriter(object):
         return self.vw is not None
 
     def open(self):
-        fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+        fourcc = cv2.VideoWriter_fourcc(*self.fourcc)
         self.vw = cv2.VideoWriter(self.filepath, fourcc, self.fps, (self.width, self.height))
 
     def close(self):

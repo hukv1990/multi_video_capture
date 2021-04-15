@@ -3,6 +3,7 @@ import math
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import List, Any
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QIcon, QImage, QPixmap, QPalette
@@ -22,6 +23,7 @@ import utils
 
 
 class MainInterface(QMainWindow, Ui_MainWindow, QObject):
+
     def __init__(self, camera_cfg, video_cfg, **kwargs):
         super(MainInterface, self).__init__()
         self.camera_cfg = camera_cfg
@@ -61,7 +63,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         for idx, (shm_list, cap_cfg) in enumerate(zip(self.shm_show_lists, self.cap_cfgs)):
             manager_dict = {
                 "info_queue": self.info_queue,
-                'save_root': self.video_cfg.save_root,
+                'save_cfg': self.video_cfg,
                 'event_cap_save': self.event_cap_save,
                 'event_cap_show': self.event_cap_show,
                 'event_cap_close': self.event_cap_close,
@@ -69,7 +71,6 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
                 'save_dict': self._cur_save_dict,
             }
             pool.apply_async(video_cap_thread, args=(idx, cap_cfg, manager_dict))
-            # pool.apply(video_cap_thread, args=(idx, cap_cfg, manager_dict))
 
         pool.close()
         self.pool = pool
@@ -135,8 +136,11 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         self.qtimer_log.start(200)
 
         self.th_list = []
-        for i in range(self._camera_cnt):
-            th = QThreadDisplay(i, self.shm_show_lists[i], self.event_cap_close, self.info_queue)
+        # for i in range(self._camera_cnt):
+        for i, cfg in enumerate(self.camera_cfg.values()):
+            flip = cfg['flip']
+            scale_ratio = cfg['scale_ratio']
+            th = QThreadDisplay(i, self.shm_show_lists[i], self.event_cap_close, self.info_queue, scale_ratio, flip)
             th.dis_signal.connect(eval(f"self.label_img{i}").setPixmap)
             self.th_list.append(th)
 
@@ -239,15 +243,19 @@ def video_cap_thread(pid, cap_cfg, manager_dict):
     event_cap_show = manager_dict['event_cap_show']
     event_cap_close = manager_dict['event_cap_close']
     shm_list: list = manager_dict['shm_list']
-    video_save_root = manager_dict['save_root']
+    video_save_cfg = manager_dict['save_cfg']
     save_dict = manager_dict['save_dict']
 
     def cap_show_dev():
         vw = video_path = None
+        show_interval = cap_cfg['show_gap']
+        cnt = 0
 
         dev = DeviceReadFactory.create_instance(**cap_cfg)
         dev.open()
+        info_queue.put(f"[{pid}] camera opened.")
         while True:
+            cnt += 1
             if not event_cap_show.is_set():
                 break
             if event_cap_close.is_set():
@@ -257,17 +265,24 @@ def video_cap_thread(pid, cap_cfg, manager_dict):
             if image is None:
                 raise ValueError('camera read error.')
 
-            shm_list.append(image_show)
+            # info_queue.put(f"fps = {dev.camera.fps}")
             if event_cap_save.is_set():
                 if (vw is None) or (not vw.is_opened()):
                     save_prefix = save_dict['prefix']
-                    video_path = f"{video_save_root}/{save_prefix}_{pid:02d}.mp4"
+                    video_path = f"{video_save_cfg['save_root']}/{save_prefix}_{pid:02d}{video_save_cfg['postfix']}"
                     Path(video_path).parent.mkdir(parents=True, exist_ok=True)
-                    vw = VideoWriter(video_path, dev.camera.width, dev.camera.height, dev.camera.fps)
+                    if hasattr(dev, 'camera'):
+                        w, h, fps = dev.camera.width, dev.camera.height, dev.camera.fps
+                    else:
+                        w, h, fps = dev.main_camera.width, dev.main_camera.height,  dev.main_camera.fps
+                        if fps > 60:
+                            raise ValueError(f"FPS Error: {fps}")
+
+                    vw = VideoWriter(video_path, w, h, fps, video_save_cfg['fourcc'])
                     vw.open()
+                    info_queue.put(f"[{pid}] start to save.")
                 else:
                     vw.write(image)
-
             elif (vw is not None) and vw.is_opened():
                 vw.close()
                 save_info = {
@@ -275,11 +290,15 @@ def video_cap_thread(pid, cap_cfg, manager_dict):
                     'id': save_dict['id'],
                     'mode': save_dict['mode'],
                     'loc': save_dict['loc'],
-                    'camera_sn': dev.camera.sn
+                    'camera_sn': dev.sn
                 }
                 utils.to_yaml(save_info, Path(video_path).with_suffix('.yaml'))
+                info_queue.put(f"[{pid}] save to {video_path}")
             else:
                 pass
+
+            if (cnt % show_interval == 0) and (len(shm_list) < 10):
+                shm_list.append(image_show)
 
         dev.close()
 
