@@ -1,42 +1,42 @@
 camera_cfg:
-#  camera1:
-#    type: USB
-#    instance_idx: 0
-#    flip: True
-#    scale_ratio: 0.2
+  camera1:
+    type: USBRSYNC
+    instance_idx: [1, 2]
+    flip: True
+    scale_ratio: 0.2
+    show_gap: 10
+    sn: haikangIDS0
+
+#  camera5:
+#    type: RTSP
+#    flip: False
+#    scale_ratio: 1.
 #    show_gap: 1
-#    sn: haikangIDS0
-
-  camera5:
-    type: RTSP
-    flip: False
-    scale_ratio: 1.
-    show_gap: 1
-    base_camera5: &base_camera5
-      sn: ip_camera
-    main:
-      rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/main/av_stream
-      <<: *base_camera5
-    sub:
-      rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/sub/av_stream
-      <<: *base_camera5
-
-  camera6:
-    type: RTSP
-    flip: False
-    scale_ratio: 1.
-    show_gap: 1
-    base_camera6: &base_camera6
-      sn: ip_camera2
-    main:
-      rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/main/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
-      <<: *base_camera6
-    sub:
-      rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/sub/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
-      <<: *base_camera6
+#    base_camera5: &base_camera5
+#      sn: ip_camera
+#    main:
+#      rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/main/av_stream
+#      <<: *base_camera5
+#    sub:
+#      rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/sub/av_stream
+#      <<: *base_camera5
+#
+#  camera6:
+#    type: RTSP
+#    flip: False
+#    scale_ratio: 1.
+#    show_gap: 1
+#    base_camera6: &base_camera6
+#      sn: ip_camera2
+#    main:
+#      rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/main/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
+#      <<: *base_camera6
+#    sub:
+#      rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/sub/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
+#      <<: *base_camera6
 
 
 video_cfg:
   save_root: D:/video_save
-  fourcc: h264 # mp4v h264  axvi
+  fourcc: mp4v # mp4v h264  axvi
   postfix: .mp4

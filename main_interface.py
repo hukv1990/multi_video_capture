@@ -1,9 +1,8 @@
 # coding=utf-8
+
 import math
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Any
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtGui import QIcon, QImage, QPixmap, QPalette
@@ -13,13 +12,13 @@ from PyQt5.Qt import Qt
 
 from easydict import EasyDict as edict
 from multiprocessing import Pool, Manager
-import numpy as np
 import logging
 
+from camera_thread import video_cap_thread
 from qinterface import QPlainTextEditLogger, QThreadDisplay
 from ui_main_interface import Ui_MainWindow
-from video_ops import VideoWriter, DeviceReadFactory
 import utils
+from functools import reduce
 
 
 class MainInterface(QMainWindow, Ui_MainWindow, QObject):
@@ -28,14 +27,15 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         super(MainInterface, self).__init__()
         self.camera_cfg = camera_cfg
         self.video_cfg = video_cfg
+        print(self.camera_cfg)
 
-        self._camera_cnt = len(self.camera_cfg)
+        self._camera_cnt = reduce(lambda x, y: x + y, [len(cam_cfg.instance_idx) for cam_cfg in self.camera_cfg.values()])
         self._label_img_views = self._camera_cnt
         self._cur_save_dict = None  # {datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}
 
         # init_logging()
-        self._init_camera_instance()
         self._set_ui()
+        self._init_camera_instance()
 
     @classmethod
     def from_yaml(cls, filepath):
@@ -50,9 +50,8 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         self.event_cap_save = manager.Event()
         self.event_cap_show = manager.Event()
         self.event_cap_close = manager.Event()
-        self.shm_show_lists = [manager.list() for i in range(self._camera_cnt)]
+        self.shm_show_lists = []
         self._cur_save_dict = manager.dict()
-
         self.cap_cfgs = self.camera_cfg.values()
 
         self.event_cap_close.clear()
@@ -60,20 +59,57 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         self.event_cap_show.clear()
 
         pool = Pool(self._camera_cnt)
-        for idx, (shm_list, cap_cfg) in enumerate(zip(self.shm_show_lists, self.cap_cfgs)):
+        for idx, cap_cfg in enumerate(self.cap_cfgs):
             manager_dict = {
                 "info_queue": self.info_queue,
                 'save_cfg': self.video_cfg,
                 'event_cap_save': self.event_cap_save,
                 'event_cap_show': self.event_cap_show,
                 'event_cap_close': self.event_cap_close,
-                'shm_list': shm_list,
+                'shm_list': None,
                 'save_dict': self._cur_save_dict,
             }
+
+            if cap_cfg.type == 'USBRSYNC':
+                assert isinstance(cap_cfg.instance_idx, list)
+                instance_cnt = len(cap_cfg.instance_idx)
+                for _ in range(instance_cnt):
+                    self.shm_show_lists.append(manager.list())
+                manager_dict['shm_list'] = self.shm_show_lists[-instance_cnt:]
+
+            elif cap_cfg.type in ['USB', 'RTSP']:
+                assert isinstance(cap_cfg.instance_idx, int)
+                self.shm_show_lists.append(manager.list())
+                manager_dict['shm_list'] = self.shm_show_lists[-1]
+
+            else:
+                raise ValueError(cap_cfg.type)
+
             pool.apply_async(video_cap_thread, args=(idx, cap_cfg, manager_dict))
 
         pool.close()
         self.pool = pool
+
+        # create thread to display
+        self.th_list = []
+        # for i in range(self._camera_cnt):
+        qpid_cnt = 0
+        for _, cap_cfg in enumerate(self.cap_cfgs):
+            flip = cap_cfg['flip']
+            scale_ratio = cap_cfg['scale_ratio']
+            if cap_cfg.type == 'USBRSYNC':
+                instance_cnt = len(cap_cfg.instance_idx)
+            elif cap_cfg.type in ['USB', 'RTSP']:
+                instance_cnt = 1
+            else:
+                instance_cnt = 0
+            for _ in range(instance_cnt):
+                th = QThreadDisplay(qpid_cnt, self.shm_show_lists[qpid_cnt], self.event_cap_close, self.info_queue, scale_ratio, flip)
+                th.dis_signal.connect(eval(f"self.label_img{qpid_cnt}").setPixmap)
+                self.th_list.append(th)
+                qpid_cnt += 1
+        for th in self.th_list:
+            th.start()
 
     def _set_label_image(self):
         _palette = QPalette()
@@ -134,18 +170,6 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         self.qtimer_log = QTimer(self)
         self.qtimer_log.timeout.connect(self.timer_log_slot)
         self.qtimer_log.start(200)
-
-        self.th_list = []
-        # for i in range(self._camera_cnt):
-        for i, cfg in enumerate(self.camera_cfg.values()):
-            flip = cfg['flip']
-            scale_ratio = cfg['scale_ratio']
-            th = QThreadDisplay(i, self.shm_show_lists[i], self.event_cap_close, self.info_queue, scale_ratio, flip)
-            th.dis_signal.connect(eval(f"self.label_img{i}").setPixmap)
-            self.th_list.append(th)
-
-        for th in self.th_list:
-            th.start()
 
     @staticmethod
     def _ndarray_to_pixmap(image):
@@ -237,83 +261,3 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
             logging.info(info)
 
 
-def video_cap_thread(pid, cap_cfg, manager_dict):
-    info_queue = manager_dict['info_queue']
-    event_cap_save = manager_dict['event_cap_save']
-    event_cap_show = manager_dict['event_cap_show']
-    event_cap_close = manager_dict['event_cap_close']
-    shm_list: list = manager_dict['shm_list']
-    video_save_cfg = manager_dict['save_cfg']
-    save_dict = manager_dict['save_dict']
-
-    def cap_show_dev():
-        vw = video_path = None
-        show_interval = cap_cfg['show_gap']
-        cnt = 0
-
-        dev = DeviceReadFactory.create_instance(**cap_cfg)
-        dev.open()
-        info_queue.put(f"[{pid}] camera opened.")
-        while True:
-            cnt += 1
-            if not event_cap_show.is_set():
-                break
-            if event_cap_close.is_set():
-                return
-
-            image, image_show = dev.read_image()
-            if image is None:
-                raise ValueError('camera read error.')
-
-            # info_queue.put(f"fps = {dev.camera.fps}")
-            if event_cap_save.is_set():
-                if (vw is None) or (not vw.is_opened()):
-                    save_prefix = save_dict['prefix']
-                    video_path = f"{video_save_cfg['save_root']}/{save_prefix}_{pid:02d}{video_save_cfg['postfix']}"
-                    Path(video_path).parent.mkdir(parents=True, exist_ok=True)
-                    if hasattr(dev, 'camera'):
-                        w, h, fps = dev.camera.width, dev.camera.height, dev.camera.fps
-                    else:
-                        w, h, fps = dev.main_camera.width, dev.main_camera.height,  dev.main_camera.fps
-                        if fps > 60:
-                            raise ValueError(f"FPS Error: {fps}")
-
-                    vw = VideoWriter(video_path, w, h, fps, video_save_cfg['fourcc'])
-                    vw.open()
-                    info_queue.put(f"[{pid}] start to save.")
-                else:
-                    vw.write(image)
-            elif (vw is not None) and vw.is_opened():
-                vw.close()
-                save_info = {
-                    'video_path': video_path,
-                    'id': save_dict['id'],
-                    'mode': save_dict['mode'],
-                    'loc': save_dict['loc'],
-                    'camera_sn': dev.sn
-                }
-                utils.to_yaml(save_info, Path(video_path).with_suffix('.yaml'))
-                info_queue.put(f"[{pid}] save to {video_path}")
-            else:
-                pass
-
-            if (cnt % show_interval == 0) and (len(shm_list) < 10):
-                shm_list.append(image_show)
-
-        dev.close()
-
-    while True:
-        info_queue.put(f"[{pid}] waitting.")
-        event_cap_show.wait()
-        info_queue.put(f"[{pid}] start to cap.")
-
-        if event_cap_close.is_set():
-            info_queue.put(f"[{pid}] exit.")
-            return
-
-        try:
-            cap_show_dev()
-            info_queue.put(f"[{pid}] stop.")
-        except Exception as e:
-            info_queue.put(f'[{pid}][Error] {e}')
-            time.sleep(1)
