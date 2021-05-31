@@ -29,7 +29,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
         self.video_cfg = video_cfg
         print(self.camera_cfg)
 
-        self._camera_cnt = reduce(lambda x, y: x + y, [len(cam_cfg.instance_idx) for cam_cfg in self.camera_cfg.values()])
+        self._camera_cnt = reduce(lambda x, y: x + y, [len(cam_cfg.instance_idx) if 'instance_idx' in cam_cfg else 1 for cam_cfg in self.camera_cfg.values() ])
         self._label_img_views = self._camera_cnt
         self._cur_save_dict = None  # {datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}
 
@@ -78,7 +78,7 @@ class MainInterface(QMainWindow, Ui_MainWindow, QObject):
                 manager_dict['shm_list'] = self.shm_show_lists[-instance_cnt:]
 
             elif cap_cfg.type in ['USB', 'RTSP']:
-                assert isinstance(cap_cfg.instance_idx, int)
+                # assert isinstance(cap_cfg.instance_idx, int)
                 self.shm_show_lists.append(manager.list())
                 manager_dict['shm_list'] = self.shm_show_lists[-1]
 

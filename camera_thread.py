@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 import utils
-from video_ops import DeviceReadFactory, VideoWriter, VideoWriterBatch
+from video_ops import DeviceReadFactory, VideoWriter, VideoWriterBatch, DeviceReaderUSBRSYNC
 
 
 #
@@ -81,12 +81,12 @@ def video_cap_thread(pid, cap_cfg, manager_dict):
                 pass
 
             if (cnt % show_interval == 0):
-                for shm, img in zip(shm_list, image_list):
-                    if len(shm) < 10:
-                        if isinstance(img, list) and len(img) == 2:
-                            shm.append(img[1])
-                        else:
+                if isinstance(dev, DeviceReaderUSBRSYNC):
+                    for shm, img in zip(shm_list, image_list):
+                        if len(shm) < 10:
                             shm.append(img)
+                else:
+                    shm_list.append(image_list[-1])
 
         dev.close()
 

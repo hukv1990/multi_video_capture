@@ -1,39 +1,55 @@
 camera_cfg:
   camera1:
     type: USBRSYNC
-    instance_idx: [1, 2]
+    instance_idx: [0, 2] 
     flip: True
     scale_ratio: 0.2
     show_gap: 10
-    sn: haikangIDS0
+    sn: xiaoping
 
-#  camera5:
-#    type: RTSP
-#    flip: False
-#    scale_ratio: 1.
-#    show_gap: 1
-#    base_camera5: &base_camera5
-#      sn: ip_camera
-#    main:
-#      rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/main/av_stream
-#      <<: *base_camera5
-#    sub:
-#      rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/sub/av_stream
-#      <<: *base_camera5
-#
-#  camera6:
-#    type: RTSP
-#    flip: False
-#    scale_ratio: 1.
-#    show_gap: 1
-#    base_camera6: &base_camera6
-#      sn: ip_camera2
-#    main:
-#      rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/main/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
-#      <<: *base_camera6
-#    sub:
-#      rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/sub/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
-#      <<: *base_camera6
+  camera2:
+    type: USBRSYNC
+    instance_idx: [1, 3] 
+    flip: True
+    scale_ratio: 0.2
+    show_gap: 10
+    sn: haikang
+
+  # camera3:
+  #   type: USBRSYNC
+  #   instance_idx: [5, 1]
+  #   flip: True
+  #   scale_ratio: 0.2
+  #   show_gap: 10
+  #   sn: haikangIDS0
+
+  # camera5:
+  #   type: RTSP
+  #   flip: False
+  #   scale_ratio: 1.
+  #   show_gap: 1
+  #   base_camera5: &base_camera5
+  #     sn: ip_camera
+  #   main:
+  #     rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/main/av_stream
+  #     <<: *base_camera5
+  #   sub:
+  #     rtsp_addr: rtsp://admin@192.168.1.132/h264/ch1/sub/av_stream
+  #     <<: *base_camera5
+
+  # camera6:
+  #   type: RTSP
+  #   flip: False
+  #   scale_ratio: 1.
+  #   show_gap: 1
+  #   base_camera6: &base_camera6
+  #     sn: ip_camera2
+  #   main:
+  #     rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/main/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
+  #     <<: *base_camera6
+  #   sub:
+  #     rtsp_addr: rtsp://admin@192.168.1.58/h264/ch1/sub/av_stream # rtsp://admin@192.168.1.58:554/main/realmonitor?channel=1&subtype=0
+  #     <<: *base_camera6
 
 
 video_cfg:

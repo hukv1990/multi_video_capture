@@ -142,11 +142,22 @@ class DeviceReaderRTSP(DeviceReaderBase):
         super(DeviceReaderRTSP, self).__init__(**kwargs)
         self.cam_dict = {
             'main': CameraReaderRtsp(**dev_cfg['main']),
-            'sub': CameraReaderRtsp(**dev_cfg['sub'])
         }
+        self.sub_cam = CameraReaderRtsp(**dev_cfg['sub'])
 
     def read_image(self):
-        return [super(DeviceReaderRTSP, self).read_image()]
+        image_list = super().read_image()
+        ret, img = self.sub_cam.read()
+        image_list.append(img)
+        return image_list
+
+    def open(self):
+        super().open()
+        self.sub_cam.open()
+
+    def close(self):
+        super().close()
+        self.sub_cam.close()
 
     @property
     def record_camera(self):
@@ -229,7 +240,8 @@ class VideoWriterBatch(object):
     def is_opened(self):
         return all([vw.is_opened() for vw in self.vw_list])
 
-    def write(self, image_list):
+    def write(self, image_list: list):
+        assert isinstance(image_list, list)
         for vw, img in zip(self.vw_list, image_list):
             if isinstance(img, list):
                 img = img[0]
